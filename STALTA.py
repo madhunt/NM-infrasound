@@ -63,7 +63,6 @@ ratio = STA[1]/LTA[1]
 
 
 
-
 # In[]: plotting yay
 # now plot to see what it looks like
 plt.plot(t_STA, STA, 'b')
