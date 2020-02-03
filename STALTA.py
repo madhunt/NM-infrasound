@@ -5,69 +5,69 @@
 # In[]: set up + define variables
 import numpy as np
 import obspy as obs
-import matplotlib.pyplot as plt
+import obspy.signal.trigger as tg
+#import matplotlib.pyplot as plt
 from os import listdir
 from os.path import isfile, join
 
-##TODO make this better (maybe read in all or one at a time but u shouldnt have to change it)
-filenum = 80 # choose which of the files to read with this number
+
 path = '/home/mad/Documents/Research2020/MSEEDdata/MMTN/' # path to data
+STA_ws = 2 # short term window length (s)
+LTA_ws = 10 # long term window length (s)
 
-threshold = 4.0 # threshold value of STA/LTA ratio
-STA_del = 720 # short term window length
-LTA_del = 7200 # long term window length
 
-# In[]: load in the data (in mseed format)
+# In[]:
+
+# make a list of files
 files = [f for f in listdir(path) if isfile(join(path, f))]
-mseed = obs.read(join(path, files[filenum]))
-data = mseed[0].data
 
-##TODO import the correct time sequence
-l = 250 # currently using this to find time
+# empty array to store all cft data (in each row)
+all_cft = np.zeros((np.size(files),900000))
+
+
+for filenum in range(0,np.size(files)):
+    # read in the data (in mseed format)
+    mseed = obs.read(join(path, files[filenum]))
+    data = mseed[0]
+    amp = data.data
+    samprate = int(data.stats.sampling_rate)
+    
+    # get start and end time, convert from UTC to Unix time
+    #t0 = int((data.stats.starttime).strftime('%s'))
+    #tf = int((data.stats.endtime).strftime('%s'))
+    
+
+    # STA and LTA window lengths in terms of data points
+    STA_w = samprate * STA_ws
+    LTA_w = samprate * LTA_ws
+    
+    cft = tg.classic_sta_lta(amp,STA_w,LTA_w)
+    tg.plot_trigger(data, cft, 1.5, 0.5)
+    
+    all_cft[filenum,:] = cft
+    
+
 
 # In[]: take moving averages
-# takes a moving average given a 1D array of data and a window length
-# returns an array of the calculated averages
-def mov_avg(A, n):
-    # A = array
-    # n = window length
-    C = np.cumsum(A)
-    C[n:] = C[n:] - C[:-n]
-    avgs = C[n-1:]/n
-    return avgs
+## takes a moving average given a 1D array of data and a window length
+## returns an array of the calculated averages
+#def mov_avg(A, n):
+#    # A = array
+#    # n = window length
+#    C = np.cumsum(A)
+#    C[n:] = C[n:] - C[:-n]
+#    avgs = C[n-1:]/n
+#    return avgs
+#
+## take short term average
+#STA = mov_avg(amp, STA_w)
+#t_STA = np.linspace(t0,tf,num=np.size(STA))
+#
+## take long term average
+#LTA = mov_avg(amp, LTA_w)
+#t_LTA = np.linspace(t0,tf,num=np.size(LTA))
+#
 
-# take short term average
-STA = mov_avg(data, STA_del)
-t_STA = np.arange(0,l-1,l/np.size(STA))
-
-# take long term average
-LTA = mov_avg(data, LTA_del)
-t_LTA = np.arange(0,l-1,l/np.size(LTA))
-
-
-# In[]: take ratio
-l = np.size(data)
-
-l_STA = np.size(STA) #15
-l_LTA = np.size(LTA) #4
-l_rat = l_STA/l_LTA #15/4=3.75
-
-v = np.arange(0,l_STA,l_rat)
-print(v)
-
-
-
-ratio = STA[1]/LTA[1]
-
-
-
-
-
-# In[]: plotting yay
-# now plot to see what it looks like
-plt.plot(t_STA, STA, 'b')
-plt.plot(t_LTA, LTA, 'r')
-plt.show()
 
 
 
