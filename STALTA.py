@@ -15,7 +15,7 @@ path = '/home/mad/Documents/Research2020/MSEEDdata/MMTN/' # path to data
 
 threshold = 4.0 # threshold value of STA/LTA ratio
 STA_del = 720 # short term window length
-LTA_del = 72000 # long term window length
+LTA_del = 7200 # long term window length
 
 # In[]: load in the data (in mseed format)
 files = [f for f in listdir(path) if isfile(join(path, f))]
@@ -38,11 +38,11 @@ def mov_avg(A, n):
 
 # take short term average
 STA = mov_avg(data, STA_del)
-t_STA = np.arange(0,l,l/np.size(STA))
+t_STA = np.arange(0,l-1,l/np.size(STA))
 
 # take long term average
 LTA = mov_avg(data, LTA_del)
-t_LTA = np.arange(0,l,l/np.size(LTA))
+t_LTA = np.arange(0,l-1,l/np.size(LTA))
 
 
 # In[]: take ratio
