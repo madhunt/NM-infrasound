@@ -10,163 +10,191 @@ import obspy.signal.trigger as tg
 import obspy.signal.filter as fl
 from os import listdir
 from os.path import isfile, join
-#import time
+#import time # for debugging purposes
 
-
-# def func
-
-path = '/home/mad/Documents/Research2020/MSEEDdata/MMTN/' # path to data (mseed)
-w_s = [2,20] # [STA window length (sec), LTA window length (sec)]
-
-thres = [0.5,5] # [low]
-
-#thres_low = 0.5 # lower threshold value where trigger is deactivated below this point
-#thres_high = 5 # upper threshold value where trigger is activated above this point
-
-# for filtering with bandpass
-freqmin = 1 # lower cutoff frequency
-freqmax=10 # upper cutoff frequency
-
-##TODO figure out how to make this automatic
-npoints = 3600 * 250
-
-##TODO: turn this whole file into a function
-#def pickevents(path, w_sec, thres, freq):
-
-
-# In[]: function to filter and detrend data, and compute STA/LTA ratios
-def filt_stalta(data, w_s, detrend, filt, **filt_kwargs):
+# In[]: define funtions
+###############################################################################
+def stalta(data, w_s, dec, detrend, filt, **filt_kwargs):
     '''
-    Filters and detrends data, and computes STA/LTA ratios
-    # INPUT:
-        # data = trace
-        # w_s = [STA,LTA] window sizes in sec
-        # detrend = string; 'simple','linear','constant','polynomial','spline'
-        # filt = type of filter; 'bandpass','lowpass','highpass', etc.
-        # filt_kwargs = options depending on filter chosen (eg. freqmin,freqmax)
-            # NOTE: df not needed as input
-    # RETURNS: array of STALTA ratios from filtered datas
+    Decimates, detrends, and filters data, and computes STA/LTA ratios.
+    INPUTS:
+        data: data in a trace
+            type: trace
+        w_s: [STA,LTA] window sizes in seconds
+            type: 2 value array
+        dec: factor to downsample the data by
+            type: integer
+        detrend: 'simple','linear','constant','polynomial','spline'
+            type: string
+        filt: type of filter; 'bandpass','lowpass','highpass'
+            type: string
+        filt_kwargs: options depending on filter chosen (eg. freqmin,freqmax)
+            NOTE: df not needed as input
+    RETURNS: array of STALTA ratios from processed data
     '''
-    
     # STA and LTA window lengths in terms of data points
     samprate = data.stats.sampling_rate
     STA_w = (samprate * w_s[0])
     LTA_w = (samprate * w_s[1])
     
+    # decimate data (decrease sampling rate)
+    data_proc = data.copy()
+    data_proc.decimate(dec)
     # center data at 0
-    data_filt = data.copy()
-    data_filt.detrend(detrend)
+    data_proc.detrend(detrend)
     # filter data
-    data_filt.filter(filt,**filt_kwargs)
+    data_proc.filter(filt,**filt_kwargs)
     
-    #st=time.time()
     # calculate STA/LTA ratios
-    cft = tg.classic_sta_lta(data_filt,STA_w,LTA_w)
-    #print("classic_sta_lta_py call time: ",time.time()-st)
+    cft = tg.classic_sta_lta(data_proc,STA_w,LTA_w)
+    
     return cft,samprate
 
-# In[]: use filt_stalta on data
-
-# make a list of data files in directory
-files = [f for f in listdir(path) if isfile(join(path, f))]
-
-# empty array to store events data
-events = np.array([])
-
-for filenum in range(0,np.size(files)+1):
-    print('File Number '+str(filenum)+' Out of '+str(np.size(files)))
+###############################################################################
+def pickEvents(path_data, path_save, w_s, thres, dec, detrend, filt, **filt_kwargs):
+    '''
+    Loads in data, runs stalta function, saves events in .npy file
+    INPUTS:
+        path_data: path to data (stored in mseed format)
+            type: string
+        path_save: path to save events (saved as .npy file)
+            type: string
+        w_s: [STA,LTA] window sizes in seconds
+            type: 2 entry array
+        thres: [lower, upper] threshold where trigger is deactivated or activated
+            type: 2 entry array
+        dec: factor to downsample the data by
+            type: integer
+        detrend: 'simple','linear','constant','polynomial','spline'
+            type: string
+        filt: type of filter; 'bandpass','lowpass','highpass', etc.
+            type: string
+        filt_kwargs: options depending on filter chosen
+            if filt='bandpass': freqmin=lower cutoff frequency, freqmax=upper cutoff
+            if filt='lowpass': freq=cutoff frequency
+            if filt='highpass': freq=cutoff frequency
+    RETURNS: 
+    '''
+    # make a list of data files in directory
+    files = [f for f in listdir(path_data) if isfile(join(path_data, f))]
     
-    # read in the data (in mseed format)
-    mseed = obs.read(join(path, files[filenum]))
-    data = mseed[0]
+    events = np.array([]) # empty array to store events data
     
-    cft,samprate = filt_stalta(data,w_s,'linear','bandpass',freqmin=freqmin,freqmax=freqmax)
+    # loop through each file
+    for filenum in range(0,np.size(files)):
+        print('File Number '+str(filenum)+' Out of '+str(np.size(files)))
+        
+        # read in the data
+        mseed = obs.read(join(path_data, files[filenum]))
+        data = mseed[0]
+        
+        cft,samprate = stalta(data, w_s, dec, detrend, filt, **filt_kwargs)
+        
+        npoints = 3600 * samprate / dec
+        
+        # if there is not a full hour of data, pad end with zeros
+        if np.size(cft) < npoints:
+            npad = npoints-np.size(cft)
+            cft = np.pad(cft, npad, 'constant')
+        
+        ############################################
+        ##TODO figure out why some files are too big
+        if np.size(cft) > npoints:
+            # there is something weird in this file (135 had 1080250 points?????)
+            print('uh oh... file number ' + str(filenum) + 'is too big???')
+            continue
+        ############################################ 
+        
+        # make sure that the sample rate is the same and the array is the expected length
+        assert np.size(cft)==samprate*3600, ('Sample rate may have changed...')
+        
+        # choose events
+        new_events = (tg.trigger_onset(cft,thres[1],thres[0]))#, files[filenum])
+        
+        # events array 
+        events = np.append(events, new_events)
     
-    # if there is not a full hour of data, pad end with zeros
-    if np.size(cft) < npoints:
-        npad = npoints-np.size(cft)
-        cft = np.pad(cft, npad, 'constant')
+    # save events
+    np.save((path_save + 'events'), events)
     
-    ##TODO figure out why some files are too big
-    if np.size(cft) > npoints:
-        # there is some dumb poop in this file (1080250 points?????)
-        print('uh oh... this file is too big???')
-        continue
-   
-    assert np.size(cft)==samprate*3600, ('Sample rate may have changed...')
+    return events
+
+###############################################################################
+def checkEvents():
     
-    # choose events
-    new_events = (tg.trigger_onset(cft,thres[1],thres[0]), files[filenum])
+    ##TODO: finish checks
     
-    events = np.append(events, new_events)
-
-# In[]: choose events and check
-
-# choose events
-
-t_st = int(files[0].split('.')[2]) # start time hour
-
-# do a reality check
-def getHour(event):
-    t_hr = (t_st + event[0] / npoints) % 24
-    return t_hr
-
-for event in events:
-    assert getHour(event) < 20, ('This event is after 8pm.. that is not right')
-
-
-
-
-
-
-
-# In[]: plot
-
-##TODO
-# view filtered data with one day plot (ask oliver for plotting triggers code)
-    # merge data
-
-
-
-
-
-# In[]: TESTING ABOVE ON ONE FILE
-# make a list of files
-files = [f for f in listdir(path) if isfile(join(path, f))]
-
-filenum=50
-
-# empty array to store all cft data (each timeseries in a row)
-all_cft = np.array([])
-
-print('File Number '+str(filenum)+' Out of '+str(np.size(files)))
-
-# read in the data (in mseed format)
-mseed = obs.read(join(path, files[filenum]))
-data = mseed[0]
-
-cft = filt_stalta(data,w_s,'linear','bandpass',freqmin=freqmin,freqmax=freqmax)
-
-# add data to all_cft matrix
-all_cft = np.append(all_cft, cft)
+    t_st = int(files[0].split('.')[2]) # start time hour
     
+    def getHour(event):
+        '''Find start hour of event'''
+        t_hr = (t_st + event / npoints)%24
+        return t_hr
+    
+    # check that events are at reasonable times
+    for event in events:
+        print(event)
+        assert getHour(event) < 20, ('This event is after 8pm.. that is not right')
+        #assert getHour(event) != 12, ('This event occured during lunch.. that is strange')
+    
+    # compare events between stations
+    
+    
+    
+    return
 
-# choose events
-events = tg.trigger_onset(all_cft,thres[1],thres[0])
+###############################################################################
+def plotEvents():
+    
+    ##TODO
+    
+    # save plots
+    
+    return
 
 
 
-# In[]: check events (none at night, etc)
+# In[]: call functions
+path_data = '/home/mad/Documents/Research2020/MSEEDdata/MMTN/' # path to data (mseed)
+path_save = '/home/mad/Documents/Research2020/picks/MMTN' # no final / so MMTN is in filename
+
+w_s = [2,20] # [STA window length (sec), LTA window length (sec)]
+
+thres = [0.5,5] # [lower, upper threshold values where trigger is deactivated, activated]
+
+dec = 5
+detrend = 'linear'
+filt = 'bandpass'
+
+# for filtering with bandpass
+freqmin = 1
+freqmax = 7
+
+# pick events
+events = pickEvents(path_data, path_save, w_s, thres, dec, detrend, filt, freqmin,freqmax)
+
+
+
+# In[]: compare events with amrit's picks
 
 
 
 
+# In[]: one day plot of events
 
+#files = [f for f in listdir(path_data) if isfile(join(path_data, f))]
+#mseed = obs.read(join(path_data, files[0]))
+#
+#for filenum in range(1,24): # read only files for the first day
+#    
+#    mseed += obs.read(join(path_data, files[filenum]))
+#
+#mseed.filter('bandpass',freqmin=freq[0],freqmax=freq[1])
+#mseed.plot(type='dayplot')
 
 
 
 # In[]: example for one hour
-
 def ex_1hr():
     STA_ws = 5 # short term window length (s)
     LTA_ws = 50 # long term window length (s)
@@ -191,9 +219,6 @@ def ex_1hr():
     data_filt = data.copy()
     data_filt.detrend('linear')
     
-    ##TODO: ask about tapering
-    data_filt.taper(max_percentage=0.05, type='hann')
-    
     # filter data
     data_filt = fl.bandpass(data_filt,freqmin=1,freqmax=10,df=250)
     
@@ -202,7 +227,6 @@ def ex_1hr():
     
     # find trigger on/off times given the higher/lower thresholds
     on_off = tg.trigger_onset(cft, thres_high, thres_low)
-    
     
     #plt.figure(1)
     ## plotting code modified from https://docs.obspy.org/tutorial/code_snippets/trigger_tutorial.html
@@ -244,12 +268,3 @@ def ex_1hr():
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.show()
     
-    
-    
-
-# pull out ratio of amps -- window around each station
-# no cammon at night or lunch -- every 15-30 min
-# make a google earth map with the station locations on it
-# compare with quarry blasts
-
-# cluster analysis
