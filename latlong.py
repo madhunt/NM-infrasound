@@ -141,16 +141,47 @@ def geoDist(lat1,long1,z1,lat2,long2,z2):
     
     return dist
 
-## get position files
-#pathM = '/home/mad/Documents/Research2020/gps/MMTNlog/pos.sta1'
-#pathW = '/home/mad/Documents/Research2020/gps/WCYNlog/pos.sta2'
-#
-#
-#latM,longM,zM = avglatlong(pathM)
-#latW,longW,zW = avglatlong(pathW)
-#
-#print(latM,longM)
-#print(latW,longW)
 
-# can then put these coordinates in Google Earth
+def approxTimeBtw(pathM,pathW,vs):
+    '''
+    INPUTS:
+        pathM: path to gps position file for station M; type: str
+        pathW:
+        vs: speed of sound (m/s), type: float
+    RETURNS:
+        tapprox: approximate time (s) for sound to travel between stations; type: float
+    '''
+    # calculate average lat/long of two stations
+    latM,longM,zM = avglatlong(pathM)
+    latW,longW,zW = avglatlong(pathW)
+    
+    # calculate distance between stations
+    dist = geoDist(latM,longM,zM,latW,longW,zW)
+        
+    # approximate travel time in sec between stations
+    t_btw = dist/vs
+    
+    return t_btw
+
+
+def main():
+    # paths to position data
+    pathM = '/home/mad/Documents/Research2020/gps/MMTNlog/pos.sta1'
+    pathW = '/home/mad/Documents/Research2020/gps/WCYNlog/pos.sta2'
+    
+#    latM,longM,zM = avglatlong(pathM)
+#    latW,longW,zW = avglatlong(pathW)
+#    
+#    print(latM,longM)
+#    print(latW,longW)
+    
+    # use approx speed of sound in m/s
+    vs = 343
+    
+    # predicted time between stations
+    tpred = approxTimeBtw(pathM,pathW,vs)
+    
+    return tpred
+
+#tpred = main()
 
