@@ -3,10 +3,11 @@ Madeline Hunt's research for Dr. Lees in Spring 2020. This is my senior research
 This code uses the obspy package.
 
 *STALTA.py*
-Pick events from data using STALTA method (short term average long term average).
+Pick events from data using STALTA method (short term average long term average) and correlate events between stations.
 
 *latlong.py*
 Functions for working with latitude and longitude data.
 
-*plotting.py*
-Functions to plot events.
+*eventInfo.py*
+Create database and plot events.
+
