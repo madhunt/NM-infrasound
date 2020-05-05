@@ -6,9 +6,9 @@ Created on 31 Jan 2020
 """
 
 import numpy as np
+
 import obspy as obs
 import obspy.signal.trigger as tg
-
 from obspy.core import Stream
 
 from os import listdir
@@ -17,6 +17,7 @@ from os.path import isfile, join
 import datetime
 
 import latlong
+
 
 def procData(data, dec, detrend, filt, **filt_kwargs):
     '''
@@ -43,9 +44,9 @@ def procData(data, dec, detrend, filt, **filt_kwargs):
     return dataProc
 
 
-def dayDic(path):
+def dayDic_MSEED(path):
     '''
-    Makes a dictionary, grouping by day.
+    Makes a dictionary, grouping by day, given .mseed files.
     INPUTS:
         path: path to data; type: str
     RETURNS:
@@ -74,6 +75,40 @@ def dayDic(path):
     return dic
 
 
+def dayDic_SEGY(path):
+    '''
+    Makes a dictionary, grouping by day, given .segy files.
+    INPUTS:
+        path: path to data; type: str
+    RETURNS:
+        dic: type: dictionary
+    '''
+    # make a list of all files in directory
+    files = [f for f in listdir(path) if isfile(join(path, f))]
+    
+    # sort these files chronologically
+    files.sort()
+    
+    # create empty dictionary
+    dic = {}
+    
+    for file in files:
+        # find day of year
+        datestr = file.split('_')[3]
+        date = datetime.date(int(datestr[0:4]),int(datestr[4:6]),int(datestr[6:]))
+        
+        day = date.timetuple().tm_yday
+        
+        # if this is the first instance
+        if dic.get(day) is None:
+            dic[day] = [file]
+        # otherwise, add new hour in the day
+        else:
+            dic[day].append(file)
+    
+    return dic
+
+
 def dataToSave(data, tstart, tstop):
     i=0
     
@@ -84,22 +119,22 @@ def dataToSave(data, tstart, tstop):
         # if the desired start time is within the hour
         if tstart > hrstart and tstart < hrstop:
             
+            istart = int((tstart-hrstart)*hr.stats['sampling_rate'])
+            
             # if the stop time is also in that hour
-            if tstop < hrstop:    
-                istart = int((tstart-hrstart)*hr.stats['sampling_rate'])
+            if tstop < hrstop:
                 istop = int((tstop-hrstart)*hr.stats['sampling_rate'])
                 # save this data
                 eventData = hr[istart:istop]
                 
             # if stop time is in next hour
             else:                
-                istart = int((tstart-hrstart)*hr.stats['sampling_rate'])
-                # stop time is in the next hour
                 nexthr = data[i+1]
                 nexthrstart = nexthr.stats['starttime']
                 istop = int((tstop-nexthrstart)*nexthr.stats['sampling_rate'])
                 # save this data
                 eventData = hr[istart:]
+                #eventData = eventData.tolist()
                 eventData.append(nexthr[:istop])
         
         else:
@@ -110,12 +145,13 @@ def dataToSave(data, tstart, tstop):
         return eventData
 
 
-def pickEvents(path1,path2, w_s, thres, coSumThres, dec, detrend, filt, **filt_kwargs):
+def pickEvents(path1, path2, datatype, w_s, thres, coSumThres, dec, detrend, filt, **filt_kwargs):
     '''
     Loads in data, runs stalta function, and returns list of events using coinidence trigger
     INPUTS:
         path1: path to data for station 1 (stored in mseed format); type: str
         path2: path to data for station 2 (stored in mseed format); type: str
+        datatype: 'MSEED' or 'SEGY' ; type: str
         
         w_s: [STA,LTA] window sizes in seconds; type: 2 entry array
         thres: [lower, upper] threshold where trigger is deactivated or activated; type: 2 entry array
@@ -130,8 +166,14 @@ def pickEvents(path1,path2, w_s, thres, coSumThres, dec, detrend, filt, **filt_k
         events: list with [date/filename (str), event times (int)]
     '''
     
-    dic1 = dayDic(path1)
-    dic2 = dayDic(path2)
+    if datatype == 'MSEED':
+        dic1 = dayDic_MSEED(path1)
+        dic2 = dayDic_MSEED(path2)
+    elif datatype == 'SEGY':
+        dic1 = dayDic_SEGY(path1)
+        dic2 = dayDic_SEGY(path2)
+    else:
+        raise NameError('Not a valid file extention!')
     
     trig = {}
     
@@ -157,8 +199,14 @@ def pickEvents(path1,path2, w_s, thres, coSumThres, dec, detrend, filt, **filt_k
             if path==path2: files=files2
             
             for file in files:
-                # load in the data for one files (one hour)
-                st = obs.core.read(join(path,file))
+                
+                try:
+                    # load in the data for one files (one hour)
+                    st = obs.core.read(join(path,file),datatype,byteorder='<')
+                except:
+                    # to catch weird segy files
+                    print('Something is wrong with this file: '+str(file))
+                    continue
                 
                 # process (filter, decimate, detrend) the data
                 dataProc = procData(st, dec, detrend, filt, **filt_kwargs)
@@ -216,12 +264,15 @@ def pickEvents(path1,path2, w_s, thres, coSumThres, dec, detrend, filt, **filt_k
 
 
 def main():
-    # path to data (mseed)
+    # path to subset of data (mseed)
     path1 = '/home/mad/Documents/Research2020/MSEEDdata/MMTN/'
     path2 = '/home/mad/Documents/Research2020/MSEEDdata/WCYN/'
     
     # path to save
     save = '/home/mad/Documents/Research2020/trig/'
+    
+    
+    datatype = 'MSEED'
     
     # [STA window length (sec), LTA window length (sec)]
     w_s = [2,30]
@@ -240,16 +291,18 @@ def main():
     # number of stations
     coSumThres = 2
     
-    trig = pickEvents(path1,path2, w_s, thres, coSumThres, dec, detrend, filt, freqmin=freqmin,freqmax=freqmax)
+    trig = pickEvents(path1,path2, datatype, w_s, thres, coSumThres, dec, detrend, filt, freqmin=freqmin,freqmax=freqmax)
     
     # save event triggers and data to load later
-    np.save((save+'eventTrig_subset.npy'), trig) 
+    np.save((save+'eventTrig_subset.npy'), trig)
     
     return
 
 
+#import time
+#start_time = time.time()
 
 main()
 
-
+#print('Runtime: %s sec' % (time.time() - start_time))
 

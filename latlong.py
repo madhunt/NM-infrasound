@@ -1,27 +1,54 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Functions for working with latitude and longitude data.
-    avglatlong(): calculates average latitude and longitude using geometric midpoint
-    geoDist(): find distance between two points on Earth using Haversine formula
-
 Created on Mon Feb 17 2020
 
 @author: madhunt
 """
-
 import numpy as np
+
+def geoMid(lat,long):
+    '''
+    Find geographic midpoint.
+    Using method described at http://www.geomidpoint.com/calculation.html
+    INPUTS:
+        lat: array of latitudes in degrees
+        long: array of longitudes in degrees
+    RETURNS:
+        latAvg, longAvg: Geographic midpoint in degrees; type: float
+    '''
+    # convert to radians
+    latr,longr = map(np.radians, [lat,long])
+    
+    # convert to cartesian points
+    x = np.cos(latr) * np.cos(longr)
+    y = np.cos(latr) * np.sin(longr)
+    z = np.sin(latr)
+    
+    # compute average
+    xAvg = np.average(x)
+    yAvg = np.average(y)
+    zAvg = np.average(z)
+    
+    # convert back to lat/long
+    latAvgr = np.arctan2(zAvg,np.sqrt(xAvg**2 + yAvg**2))
+    longAvgr = np.arctan2(yAvg,xAvg)
+    
+    # convert back to degrees
+    latAvg = latAvgr * 180/np.pi
+    longAvg = longAvgr * 180/np.pi
+    
+    return latAvg,longAvg
+
 
 def avglatlong(path):
     '''
-    Get latitude, longitude, and elevation; convert to decimal notation; calculate the geographic midpoint (average)
+    Calculates average latitude and longitude using geometric midpoint.
     INPUTS:
         path: path to position file; type: str
     RETURNS:
         latAvg,longAvg,zAvg: average latitude, longitude, and elevation; type: float
     '''
-    
-    # open file
     file = open(path,mode='r')
     
     # make list with position strings
@@ -71,39 +98,6 @@ def avglatlong(path):
     long = pos[1]
     z = pos[2]
     
-    def geoMid(lat,long):
-        '''
-        Find the Geographic midpoint (average assuming perfect sphere)
-        Using method described on http://www.geomidpoint.com/calculation.html
-        INPUTS:
-            lat: array of latitudes in degrees
-            long: array of longitudes in degrees
-        RETURNS:
-            latAvg, longAvg: Geographic midpoint in degrees; type: float
-        '''
-        # convert to radians
-        latr,longr = map(np.radians, [lat,long])
-        
-        # convert to cartesian points
-        x = np.cos(latr) * np.cos(longr)
-        y = np.cos(latr) * np.sin(longr)
-        z = np.sin(latr)
-        
-        # compute average
-        xAvg = np.average(x)
-        yAvg = np.average(y)
-        zAvg = np.average(z)
-        
-        # convert back to lat/long
-        latAvgr = np.arctan2(zAvg,np.sqrt(xAvg**2 + yAvg**2))
-        longAvgr = np.arctan2(yAvg,xAvg)
-        
-        # convert back to degrees
-        latAvg = latAvgr * 180/np.pi
-        longAvg = longAvgr * 180/np.pi
-        
-        return latAvg,longAvg
-    
     latAvg,longAvg = geoMid(lat,long)
     zAvg = np.average(z)
     
@@ -112,7 +106,7 @@ def avglatlong(path):
 
 def geoDist(lat1,long1,z1,lat2,long2,z2):
     '''
-    Calculates distance in meters between two points on the Earth using the Haversine formula (assumes spherical Earth).
+    Calculates distance in meters between two points on the Earth using the Haversine formula.
     Using method described on https://www.movable-type.co.uk/scripts/latlong.html
     INPUTS:
         lat1,long1,z1: latitude, longitude, and elevation of point 1 (lat/long in decimal notation)
@@ -157,7 +151,7 @@ def approxTimeBtw(pathM,pathW,vs):
     
     # calculate distance between stations
     dist = geoDist(latM,longM,zM,latW,longW,zW)
-        
+            
     # approximate travel time in sec between stations
     t_btw = dist/vs
     
@@ -169,12 +163,6 @@ def main():
     pathM = '/home/mad/Documents/Research2020/gps/MMTNlog/pos.sta1'
     pathW = '/home/mad/Documents/Research2020/gps/WCYNlog/pos.sta2'
     
-#    latM,longM,zM = avglatlong(pathM)
-#    latW,longW,zW = avglatlong(pathW)
-#    
-#    print(latM,longM)
-#    print(latW,longW)
-    
     # use approx speed of sound in m/s
     vs = 343
     
@@ -183,5 +171,5 @@ def main():
     
     return tpred
 
-#tpred = main()
 
+#main()

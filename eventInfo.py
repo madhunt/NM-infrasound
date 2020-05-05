@@ -9,36 +9,39 @@ Created on Mon Feb 24 2020
 import numpy as np
 import matplotlib.pyplot as plt
 
-import datetime
-
 import csv
 
 
 def readData(pathTrig):
+    
     trig = np.load(pathTrig,allow_pickle='TRUE').item()
+    
     return trig
 
 
 def sigToNoise(data):
     '''
-    Computes signal-to-noise ratio of data; from scipy.stats v0.14.0
+    Computes signal-to-noise ratio of data, assuming data is centered at 0.
     INPUTS:
-        data; type: list or array
+        data; data with signal triggered at len/2; type: list or array
     RETURNS:
         s2n: signal-to-noise ratio; type: float
     '''
-    data = np.asanyarray(data)
-    mean = data.mean()
-    std = data.std()
+    n = len(data)
     
-    s2n = np.where(std == 0, 0, mean/std)
+    Snoise = np.var(data[0:int(0.5*n)])
+    Sboth = np.var(data[int(0.5*n):])
+    Ssignal = Sboth - Snoise
     
-    return float(s2n)
+    s2n = Ssignal/Snoise
+    
+    return s2n
 
 
 def RMS(data):
-    data = np.asarray(data)
-    
+    '''
+    Computes RMS amplitude.
+    '''
     rms = np.sqrt(np.mean(data**2))
       
     return rms
@@ -57,8 +60,8 @@ def properties(trig):
             'variance': variance of signal; type: tuple
             'amp_RMS': RMS amplitude of signal at each station; type: tuple
             'amp_p2p': peak-to-peak amplitude; type: tuple
-            
     '''
+    
     database = {}   
     database['ID'] = []
     database['timeDiff'] = []
@@ -91,39 +94,40 @@ def properties(trig):
             database['timeDiff'].append(timeDiff)
             
             # find signal to noise ratio 
-            s1 = sigToNoise(data1[int(0.25*n1) : int(0.75*n1)])
-            s2 = sigToNoise(data2[int(0.25*n2) : int(0.75*n2)])
+            s1 = sigToNoise(data1)
+            s2 = sigToNoise(data2)
             database['sigToNoise'].append((s1,s2))
             
             # find variance
-            #TODO: should this be the variance across the entire window or just the signal?
-            v1 = np.var(data1)
-            v2 = np.var(data2)
+            LTA1 = 30/120/2
+            LTA2 = 1-LTA1
+            
+            v1 = np.var(data1[int(LTA1*n1) : int(LTA2*n1)])
+            v2 = np.var(data2[int(LTA1*n2) : int(LTA2*n2)])
             database['variance'].append((v1,v2))
             
             # find RMS amplitude
-            #TODO: should this be just around the event or the entire window
-            rms1 = RMS(data1[int(0.45*n1) : int(0.65*n1)])
-            rms2 = RMS(data2[int(0.45*n2) : int(0.65*n2)])
+            STA1 = 2/120/2
+            STA2 = 1-STA1
+            
+            rms1 = RMS(data1[int(STA1*n1) : int(STA2*n1)])
+            rms2 = RMS(data2[int(STA1*n2) : int(STA2*n2)])
             database['amp_RMS'].append((rms1,rms2))
             
-            # find peak to peak amplitude
-            #TODO: 
-            
-            
+            # find peak to peak amplitude          
             
             # increase event ID
             ID += 1
-            
     
     return database
     
 
-def plot1(ID,trig):
-    
+def plot1event(ID,trig):
+    # loop through days and events, etc. to find event matching given ID
     for day in trig:
         events = trig.get(day)
         for event in events:
+            
             if ID == event['ID']:
                 data1 = event['data1']
                 data2 = event['data2']
@@ -131,59 +135,60 @@ def plot1(ID,trig):
                 n1 = len(data1)
                 n2 = len(data2)
                 
-                #tevent = event['time']
-                #dt = datetime.timedelta(seconds=0,minutes=1)
+                time = event.get('time')
+                timeDiff = time[1] - time[0]
                 
-                #time1 = np.linspace(tevent[0]-dt,tevent[0]+dt,n1)
-                #time2 = np.linspace(tevent[1]-dt,tevent[1]+dt,n2)
-                
-                time1 = np.linspace(-1,1,n1)
-                time2 = np.linspace(-1,1,n2)
-                
+                timeaxis1 = np.linspace(-60,60,int(n1/2))
+                timeaxis2 = timeaxis1 + timeDiff
 
                 plt.close('all')
                 plt.figure()
                 
                 plt.subplot(211)
-                plt.plot(time1,data1)
+                plt.plot(timeaxis1,data1[int(0.25*n1):int(0.75*n1)])
+                plt.title(event['stations'][0] + ': ' + time[0].strftime("%d %B %Y, %H:%M:%S"))
+                plt.xlim([-30,30])
+                plt.ylabel('Amplitude (Pa)')
+                plt.text(0, 0,'1 to 7Hz Filter',transform=plt.gca().transAxes)
                 
                 plt.subplot(212)
-                plt.plot(time2,data2)
+                plt.plot(timeaxis2,data2[int(0.25*n2):int(0.75*n2)])
+                plt.title(event['stations'][1] + ': '  + time[1].strftime("%d %B %Y, %H:%M:%S"))
+                plt.xlim([-30,30])
+                plt.ylabel('Amplitude (Pa)')
+                plt.xlabel('Time from Event (sec)')
+                plt.text(0, 0,'1 to 7Hz Filter',transform=plt.gca().transAxes)
                 
-                
-                
-                
-    
+                plt.suptitle('Event ' + str(ID))
     return
 
 
-
-def saveDatabase():
+def saveDatabase(my_dict, path):
+    with open(path, "wb") as f_output:
+        csv_output = csv.writer(f_output)
+        csv_output.writerow(['ID', 'timeDiff', 'sigToNoise', 'variance', 'amp_RMS', 'amp_p2p'])
     
+        for key in sorted(my_dict.keys()):
+            csv_output.writerow([key] + my_dict[key])
+            
     return
 
-    
-    
 
 def main():
-    # path to event triggers
-    pathTrig = '/home/mad/Documents/Research2020/trig/eventTrig.npy'
+    # path to event triggers and to save data
+    path = '/home/mad/Documents/Research2020/trig/'
     
-    trig = readData(pathTrig)
+    trig = readData(path + 'eventTrig_subset.npy')
     database = properties(trig)
     
+    # event ID to plot
+    ID = 42
+        
+    plot1event(ID,trig)
     
-    ID = 14
-    
-    plot1(ID,trig)
-    
+    #saveDatabase(database,(path+'database_subset.csv'))
     
     return trig, database
 
 
 trig,database = main()
-
-
-
-
-
